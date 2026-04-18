@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LeopardEye — AI Wildlife Detection</title>
+  <meta name="description" content="Real-time AI-powered leopard detection system using YOLO11 and MobileNetV3. Protecting communities with cutting-edge computer vision."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body>
+
+<!-- ░░░ PARTICLE CANVAS ░░░ -->
+<canvas id="particle-canvas"></canvas>
+
+<!-- ░░░ NAVBAR ░░░ -->
+<nav id="navbar">
+  <div class="nav-inner">
+    <div class="nav-logo">
+      <span class="logo-icon">🐆</span>
+      <span class="logo-text">LeopardEye<span class="logo-dot">.</span></span>
+    </div>
+    <div class="nav-links">
+      <a href="#hero">Home</a>
+      <a href="#about">About</a>
+      <a href="#tech">Technology</a>
+      <a href="#gallery">Gallery</a>
+    </div>
+    <div class="nav-badge" id="status-badge">
+      <span class="pulse-dot"></span>
+      <span id="badge-text">System Ready</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ░░░ HERO SECTION ░░░ -->
+<section id="hero">
+  <div class="hero-bg">
+    <img src="/static/images/hero_bg.png" alt="jungle background" class="hero-bg-img"/>
+    <div class="hero-overlay"></div>
+    <!-- Scanning grid lines -->
+    <div class="scan-line" id="scan-line"></div>
+  </div>
+
+  <div class="hero-content">
+    <div class="hero-text">
+      <div class="hero-tag">
+        <span class="tag-dot"></span>
+        AI-Powered Wildlife Security
+      </div>
+      <h1 class="hero-title">
+        Spot the<br/>
+        <span class="title-accent">Leopard</span><br/>
+        Before It's Too Late
+      </h1>
+      <p class="hero-subtitle">
+        Real-time leopard detection using YOLO11 + MobileNetV3 two-stage AI pipeline. 
+        Protecting lives with instant computer vision alerts.
+      </p>
+
+      <div class="hero-actions">
+        <button class="btn-detect" id="detect-btn" onclick="startDetection()">
+          <span class="btn-icon">▶</span>
+          <span class="btn-label">Start Detection</span>
+          <span class="btn-ripple"></span>
+        </button>
+        <button class="btn-stop" id="stop-btn" onclick="stopDetection()" style="display:none;">
+          <span class="btn-icon">⏹</span>
+          <span class="btn-label">Stop Detection</span>
+        </button>
+        <a href="#about" class="btn-secondary">Learn More</a>
+      </div>
+
+      <!-- Live status card -->
+      <div class="status-card" id="status-card">
+        <div class="status-icon" id="status-icon">🟢</div>
+        <div class="status-info">
+          <div class="status-label">SYSTEM STATUS</div>
+          <div class="status-value" id="status-msg">Idle — Press Start Detection</div>
+        </div>
+        <div class="status-timer" id="timer-display" style="display:none;">
+          <div class="timer-label">RUNNING</div>
+          <div class="timer-value" id="timer-val">00:00</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hero Leopard Image -->
+    <div class="hero-image-wrap">
+      <div class="hero-img-glow"></div>
+      <div class="scan-frame">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="scan-beam" id="scan-beam"></div>
+        <img src="/static/images/t1.jpg" alt="Leopard" class="hero-leopard-img" id="hero-leo-img"/>
+        <div class="detection-label" id="det-label" style="display:none;">
+          LEOPARD DETECTED ✓
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scroll indicator -->
+  <div class="scroll-down">
+    <div class="scroll-arrow"></div>
+    <span>Scroll Down</span>
+  </div>
+</section>
+
+<!-- ░░░ STATS BAR ░░░ -->
+<section id="stats-bar">
+  <div class="stats-inner">
+    <div class="stat-item">
+      <div class="stat-num" data-target="99.2">0</div>
+      <div class="stat-unit">%</div>
+      <div class="stat-label">Detection Accuracy</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-num" data-target="30">0</div>
+      <div class="stat-unit">fps</div>
+      <div class="stat-label">Real-time Speed</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-num" data-target="2">0</div>
+      <div class="stat-unit">stage</div>
+      <div class="stat-label">AI Pipeline</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-num" data-target="0">0</div>
+      <div class="stat-unit">ms</div>
+      <div class="stat-label">Alert Delay</div>
+    </div>
+  </div>
+</section>
+
+<!-- ░░░ ABOUT SECTION ░░░ -->
+<section id="about">
+  <div class="section-inner">
+    <div class="section-tag">The Mission</div>
+    <h2 class="section-title">Why LeopardEye?</h2>
+    <p class="section-subtitle">
+      IIITDM Jabalpur campus borders the Dumna Nature Reserve — home to leopards that 
+      occasionally stray into the campus, posing serious danger. LeopardEye provides 
+      instant, AI-powered alerts to protect every life on campus.
+    </p>
+
+    <div class="cards-row">
+      <div class="feature-card">
+        <div class="card-icon">🎯</div>
+        <h3>Two-Stage AI</h3>
+        <p>YOLO11 first-pass detection followed by MobileNetV3 crop verification eliminates false positives with surgical precision.</p>
+      </div>
+      <div class="feature-card featured">
+        <div class="card-glow"></div>
+        <div class="card-icon">⚡</div>
+        <h3>Instant Alerts</h3>
+        <p>Audible beep alerts trigger within milliseconds of confirmed leopard detection, with smart 2-second cooldown to avoid noise.</p>
+      </div>
+      <div class="feature-card">
+        <div class="card-icon">🔒</div>
+        <h3>Zero False Positives</h3>
+        <p>Custom ImageNet leopard-family class verification (288, 289, 290) ensures only true leopard detections are flagged.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ░░░ TECHNOLOGY SECTION ░░░ -->
+<section id="tech">
+  <div class="section-inner">
+    <div class="section-tag">Under the Hood</div>
+    <h2 class="section-title">The Technology</h2>
+
+    <div class="tech-layout">
+      <div class="pipeline">
+        <div class="pipe-step active">
+          <div class="pipe-num">01</div>
+          <div class="pipe-content">
+            <div class="pipe-title">Camera Input</div>
+            <div class="pipe-desc">Live webcam stream captured at 640×480 via OpenCV. Motion-blur sharpening applied before inference.</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">02</div>
+          <div class="pipe-content">
+            <div class="pipe-title">YOLO11 Detection</div>
+            <div class="pipe-desc">YOLOv11 nano model scans every frame for animal candidates at 30% confidence threshold across 9 COCO animal classes.</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">03</div>
+          <div class="pipe-content">
+            <div class="pipe-title">MobileNetV3 Verify</div>
+            <div class="pipe-desc">Each candidate crop classified by MobileNetV3-Small. Only ImageNet leopard classes (288/289/290) pass the 15% threshold.</div>
+          </div>
+          <div class="pipe-arrow">→</div>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">04</div>
+          <div class="pipe-content">
+            <div class="pipe-title">Alert + Overlay</div>
+            <div class="pipe-desc">Confirmed leopards get EMA-smoothed bounding boxes, confidence score overlay, and an audible beep alert.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tech-stack">
+        <h3 class="tech-stack-title">Stack</h3>
+        <div class="tech-tags">
+          <span class="tech-tag">Python 3.11</span>
+          <span class="tech-tag">YOLO11</span>
+          <span class="tech-tag">PyTorch</span>
+          <span class="tech-tag">MobileNetV3</span>
+          <span class="tech-tag">OpenCV</span>
+          <span class="tech-tag">NumPy</span>
+          <span class="tech-tag">Ultralytics</span>
+          <span class="tech-tag">Flask</span>
+          <span class="tech-tag">COCO Dataset</span>
+          <span class="tech-tag">ImageNet</span>
+        </div>
+
+        <div class="confidence-meter">
+          <div class="cm-label">YOLO Confidence</div>
+          <div class="cm-bar"><div class="cm-fill" style="width:30%"></div></div>
+          <div class="cm-val">30%</div>
+        </div>
+        <div class="confidence-meter">
+          <div class="cm-label">Classifier Threshold</div>
+          <div class="cm-bar"><div class="cm-fill" style="width:15%"></div></div>
+          <div class="cm-val">15%</div>
+        </div>
+        <div class="confidence-meter">
+          <div class="cm-label">IOU Threshold</div>
+          <div class="cm-bar"><div class="cm-fill" style="width:45%"></div></div>
+          <div class="cm-val">45%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ░░░ GALLERY SECTION ░░░ -->
+<section id="gallery">
+  <div class="section-inner">
+    <div class="section-tag">In Action</div>
+    <h2 class="section-title">Detection Gallery</h2>
+    <div class="gallery-grid">
+      <div class="gallery-item large">
+        <img src="/static/images/t1.jpg" alt="Leopard on tree" loading="lazy"/>
+        <div class="gallery-overlay">
+          <div class="gallery-tag">🐆 Wild Leopard</div>
+        </div>
+      </div>
+      <div class="gallery-item">
+        <img src="/static/images/leopard_screenshot.png" alt="Detection screenshot" loading="lazy"/>
+        <div class="gallery-overlay">
+          <div class="gallery-tag">📸 Detection Result</div>
+        </div>
+      </div>
+      <div class="gallery-item">
+        <img src="/static/images/preview.png" alt="System preview" loading="lazy"/>
+        <div class="gallery-overlay">
+          <div class="gallery-tag">🖥️ Live Preview</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ░░░ CTA SECTION ░░░ -->
+<section id="cta">
+  <div class="cta-inner">
+    <div class="cta-glow"></div>
+    <h2 class="cta-title">Ready to Detect?</h2>
+    <p class="cta-sub">Click below to launch the live camera detection — just like hitting Play.</p>
+    <button class="btn-detect big-cta" id="cta-detect-btn" onclick="startDetection()">
+      <span class="btn-icon">▶</span>
+      <span class="btn-label">Launch Detection Now</span>
+    </button>
+  </div>
+</section>
+
+<!-- ░░░ FOOTER ░░░ -->
+<footer id="footer">
+  <div class="footer-inner">
+    <div class="footer-logo">
+      <span>🐆</span> LeopardEye
+    </div>
+    <p class="footer-desc">AI-powered leopard detection for campus safety at IIITDM Jabalpur.</p>
+    <div class="footer-credits">
+      Built with YOLO11 · MobileNetV3 · OpenCV · Flask &nbsp;|&nbsp; © 2024 LeopardEye
+    </div>
+  </div>
+</footer>
+
+<!-- ░░░ TOAST NOTIFICATION ░░░ -->
+<div class="toast" id="toast">
+  <span class="toast-icon" id="toast-icon">✅</span>
+  <span id="toast-msg">Detection started!</span>
+</div>
+
+<script src="/static/js/main.js"></script>
+</body>
+</html>
