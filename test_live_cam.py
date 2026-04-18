@@ -4,8 +4,13 @@ import time
 import sys
 import os
 import threading
-import winsound
 import pathlib
+
+# Handle cross-platform sound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 
 import torch
 import torchvision.transforms as T
@@ -277,9 +282,12 @@ def run_detection():
             now = time.time()
             if now - last_beep_time >= BEEP_COOLDOWN:
                 last_beep_time = now
-                threading.Thread(
-                    target=winsound.Beep, args=(2500, 300), daemon=True
-                ).start()
+                if winsound:
+                    threading.Thread(
+                        target=winsound.Beep, args=(2500, 300), daemon=True
+                    ).start()
+                else:
+                    print("\a") # terminal bell for non-windows
         else:
             no_detect_count += 1
             if no_detect_count > MAX_COAST:
@@ -316,7 +324,12 @@ def run_detection():
                           (0, 200, 80), -1)
 
         # ── DISPLAY ──────────────────────────────────────────
-        cv2.imshow(window_name, frame)
+        try:
+            cv2.imshow(window_name, frame)
+        except Exception as e:
+            # Skip GUI if not available (e.g. on a cloud server)
+            if frame_num % 30 == 0:
+                print(f"[Info] Running in headless mode. Frames processed: {frame_num}")
         if out_writer:
             out_writer.write(frame)
 
