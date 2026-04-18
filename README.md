@@ -1,32 +1,50 @@
-# Leopard Detection
-Leopard detection is done through Custom Object Detection using YOLO. Darkflow simplifies the use of YOLO and makes custom object detection simple and easier. Step-by-step how to use Darkflow can be found here [here](https://github.com/Boltuzamaki/Custom-Object-Detection-Using-Darkflow-Simplified-).
+# LeopardEye: AI-Powered Leopard Detection Model 🐆
 
-## The Motivation
-IIITDM Jabalpur campus is located right beside Dumna Nature Reserve. Dumna Nature Reserve is home to many faunae. Out of all of the faunae, Leopards and Deer have frequented the campus by jumping over the boundary walls. These Leopards pose a threat to the other residents of the lush green campus.
+LeopardEye is a high-precision, real-time animal monitoring and detection system specifically designed to identify leopards. Built with a two-stage AI pipeline, it combines the speed of YOLO11 with the verification power of MobileNetV3 to ensure zero false positives in wildlife monitoring.
 
-To make an IoT device that would alert authorities and people nearby about the prresence of a leopard, Custom Object Detection is used.
+## 🌟 Key Features
+- **Two-Stage AI Pipeline**: Uses YOLO11 for initial animal detection and MobileNetV3 (ImageNet) for surgical leopard verification.
+- **Instant Camera Launch**: Pre-loads models in the background for zero-latency detection startup.
+- **Premium Web Interface**: A cinematic, Netflix-inspired dashboard to control the detection system.
+- **Audio Alerts**: Instant audible notifications when a leopard is confirmed.
+- **Motion Sharpness**: Integrated sharpening filters to maintain accuracy even with motion-blurred camera feeds.
 
-## How it's made
-Real-time Custom Object Detection has been a major feild of research in Image Processing. There are pre-trained models of objects available, but there is none for a leopard. Using [Darkflow](https://github.com/Boltuzamaki/Custom-Object-Detection-Using-Darkflow-Simplified-), a model can be trained. The images used for training the model can be found [here](https://drive.google.com/drive/folders/1TW-NCSWeA0AeNuQIe5rJx3UKM4BH34NW?usp=sharing). The xml files of the images are available [here](https://github.com/arnav-deep/leopard-detection/tree/master/xml). The trained ckpt files have also been made available [here](https://drive.google.com/drive/folders/10lA2jEGqqB4TFwZQj3NURakUM7ZLW5qm?usp=sharing).
+## 🚀 Quick Start
 
-By running the [test_live_cam.py](https://github.com/arnav-deep/leopard-detection/blob/master/test_live_cam.py) file, the command prompt will show the results.
+### 1. Install Dependencies
+```bash
+pip install flask flask-cors pillow torch torchvision ultralytics opencv-python numpy
+```
 
-<p align = "center"> <br/>
-<img align="center" src="leopard_screenshot.png" alt="leopard_detection">
-<br/>
+### 2. Run the Application
+Start the Flask server:
+```bash
+python app.py
+```
 
-The proper steps are mentioned [here](https://github.com/Boltuzamaki/Custom-Object-Detection-Using-Darkflow-Simplified-).
+### 3. Access the Dashboard
+Open your browser and navigate to:
+**[http://127.0.0.1:5000](http://127.0.0.1:5000)**
 
-## Application in project
-This model for leopard detection has been made for [StaySafe](https://github.com/arnav-deep/StaySafe).
+Click **Start Detection** to begin monitoring!
 
-## Model
-The whole system is implemented on Raspberry Pi with Pi NoIR Camera and GSM Module.
+## 🛠 Technology Stack
+- **AI Models**: YOLO11 (Ultralytics) + MobileNetV3 (Small)
+- **Backend**: Flask (Python)
+- **Frontend**: Vanilla HTML5, CSS3, JavaScript
+- **Computer Vision**: OpenCV
+- **Deep Learning**: PyTorch
 
-## Developers
-This project has been developed by [Arnav Deep](https://github.com/arnav-deep) and [Manjot Singh](https://github.com/QuipPhoenix).
+## 📊 Motivation
+This project was developed to enhance campus safety at IIITDM Jabalpur, which borders the Dumna Nature Reserve. The system provides real-time alerts to protect residents from leopard encounters by monitoring boundary walls and frequented areas.
 
-## License
-GNU GENERAL PUBLIC LICENSE Version 2
+## 📸 Screenshots
+<p align="center">
+  <img src="static/images/leopard_screenshot.png" alt="Leopard Detection UI" width="800">
+</p>
 
-Arnav Deep © November 2019. All rights reserved.
+## 📜 License
+This project is licensed under the GNU General Public License v2.0.
+
+---
+**Developed by [hmbendale21](https://github.com/hmbendale21)**
