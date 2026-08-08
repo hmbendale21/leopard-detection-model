@@ -92,7 +92,11 @@
         </div>
       </div>
 
+<<<<<<< HEAD
       <!-- Hero Leopard Image -->
+=======
+      <!-- Live Camera / Preview -->
+>>>>>>> 0f2754f (completed)
       <div class="hero-image-wrap">
         <div class="hero-img-glow"></div>
         <div class="scan-frame">
@@ -101,7 +105,18 @@
           <div class="corner bl"></div>
           <div class="corner br"></div>
           <div class="scan-beam" id="scan-beam"></div>
+<<<<<<< HEAD
           <img src="/static/images/t1.jpg" alt="Leopard" class="hero-leopard-img" id="hero-leo-img" />
+=======
+
+          <!-- Idle preview image (shown before detection starts) -->
+          <img src="/static/images/t1.jpg" alt="Leopard" class="hero-leopard-img" id="hero-leo-img" />
+
+          <!-- Live webcam feed + detection overlay (shown while running) -->
+          <video id="webcam-video" autoplay playsinline muted style="display:none;"></video>
+          <canvas id="overlay-canvas" style="display:none;"></canvas>
+
+>>>>>>> 0f2754f (completed)
           <div class="detection-label" id="det-label" style="display:none;">
             LEOPARD DETECTED ✓
           </div>

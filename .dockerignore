@@ -1,7 +1,9 @@
-.git
-__pycache__
+__pycache__/
 *.pyc
-xml
+.git
+.gitignore
 .model_ready
 .detect_trigger
 .detect_stop
+xml/
+*.mp4
