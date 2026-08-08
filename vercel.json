@@ -6,10 +6,18 @@
       "use": "@vercel/static"
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/:path*",
-      "destination": "https://leopard-detection.onrender.com/api/:path*"
+      "src": "/api/(.*)",
+      "dest": "https://leopard-detection.onrender.com/api/$1"
+    },
+    {
+      "src": "/",
+      "dest": "/frontend/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/$1"
     }
   ]
 }
