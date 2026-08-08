@@ -23,6 +23,7 @@ from torchvision import models
 from ultralytics import YOLO
 from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS
+import traceback
 
 app = Flask(__name__)
 CORS(app)
@@ -62,13 +63,26 @@ def load_models():
         print("========== LOADING MODELS ==========")
 
         # Automatically download YOLO if missing
-        yolo_model = YOLO("yolo11n.pt")
+        # Use explicit path so deployers don't rely on CWD
+        if not pathlib.Path(MODEL_PATH).exists():
+            raise FileNotFoundError(f"YOLO model file not found at {MODEL_PATH}")
+        yolo_model = YOLO(MODEL_PATH)
 
         print("YOLO Loaded")
 
-        classifier = models.mobilenet_v3_small(
-            weights=models.MobileNet_V3_Small_Weights.DEFAULT
-        )
+        # Load a MobileNetV3 classifier. If pretrained weights cannot be
+        # downloaded in the deployment environment, fall back to an
+        # uninitialized model and log a warning. For production, bundle
+        # the weights or provide a local checkpoint to avoid runtime
+        # downloads.
+        try:
+            classifier = models.mobilenet_v3_small(
+                weights=models.MobileNet_V3_Small_Weights.DEFAULT
+            )
+        except Exception as ex_weights:
+            print("Could not load pretrained MobileNet weights; falling back to weights=None")
+            print(ex_weights)
+            classifier = models.mobilenet_v3_small(weights=None)
 
         classifier.eval()
 
@@ -90,7 +104,7 @@ def load_models():
     except Exception as e:
 
         print("MODEL LOAD FAILED")
-        print(e)
+        traceback.print_exc()
 
         with _state_lock:
             _models["ready"] = False
