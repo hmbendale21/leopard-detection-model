@@ -1,5 +1,36 @@
 # 🐆 Leopard Detection System (LeopardEye)
 
+## 🚀 Deploying to the cloud
+
+This app was reworked so the **browser** captures your webcam (via `getUserMedia`) and streams
+frames to the Flask backend, which runs the YOLO11 + MobileNetV3 pipeline and sends back a
+bounding box. That's what makes it deployable — no camera needs to be attached to the server.
+
+### Option A — Render (recommended, free tier works)
+1. Push this folder to a GitHub repo.
+2. On [render.com](https://render.com) → **New +** → **Blueprint**, point it at the repo. It will
+   read `render.yaml` automatically. Or manually create a **Web Service** with:
+   - Build command: `pip install -r requirements.txt`
+   - Start command: `gunicorn -w 1 -k gthread --threads 4 --timeout 120 -b 0.0.0.0:$PORT app:app`
+3. Deploy. First boot takes 1-2 min while YOLO + MobileNetV3 download/load.
+4. Open the `*.onrender.com` URL Render gives you — allow camera access when prompted.
+
+### Option B — Docker (Railway, Fly.io, any VPS)
+```bash
+docker build -t leopard-detection .
+docker run -p 5000:5000 -e PORT=5000 leopard-detection
+```
+Push the image / repo to Railway or Fly.io and it will pick up the `Dockerfile` automatically.
+
+### Notes
+- **Not compatible with Vercel** — the `torch`/`ultralytics` dependencies are far larger than
+  serverless function size limits.
+- Free-tier CPU hosting gives roughly 1-2 frames/sec of inference; that's expected and by design
+  (`CAPTURE_INTERVAL_MS` in `static/js/main.js` controls the capture rate).
+- The site must be served over **HTTPS** (or `localhost`) for browsers to allow camera access —
+  Render/Railway/Fly all provide HTTPS automatically.
+
+
 ## 📌 Problem Statement
 Leopard intrusions near human settlements pose serious safety risks, especially in areas close to forests and wildlife reserves. Traditional monitoring systems often fail to accurately distinguish leopards from other animals, leading to false alarms or missed detections.
 

@@ -1,73 +1,110 @@
 """
-Leopard Detection Website — Flask Backend
-- Pre-loads AI models in background on server start
-- On Detect click: writes trigger file → camera opens INSTANTLY
-- On Stop click: writes stop file → camera closes
+Leopard Detection Website — Flask Backend (cloud-deployable)
+
+Architecture:
+  - Browser captures webcam frames with getUserMedia (client-side, no server camera needed)
+  - Each frame is sent to POST /api/detect_frame as a base64 JPEG
+  - Server runs the two-stage pipeline: YOLO11 (animal candidates) -> MobileNetV3 (leopard verification)
+  - Server returns a bounding box + confidence; browser draws it on an overlay canvas
+
+Models are loaded once, in a background thread, right after the server boots.
 """
 
-import os
-import sys
-import subprocess
+import base64
+import pathlib
 import threading
 import time
-import pathlib
-from flask import Flask, render_template, jsonify, send_from_directory
+
+import cv2
+import numpy as np
+import torch
+import torchvision.transforms as T
+from torchvision import models
+from ultralytics import YOLO
+from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-BASE_DIR     = pathlib.Path(__file__).parent
-READY_FILE   = BASE_DIR / ".model_ready"
-TRIGGER_FILE = BASE_DIR / ".detect_trigger"
-STOP_FILE    = BASE_DIR / ".detect_stop"
+BASE_DIR = pathlib.Path(__file__).parent
 
-# Track the preload process
-preload_proc   = None
-detection_lock = threading.Lock()
-detection_status = {
-    "running":     False,
-    "models_ready": False,
-    "start_time":  None,
-    "message":     "Loading AI models in background..."
-}
+# ============================================================
+# LEOPARD-ONLY DETECTION  (YOLO11 + MobileNetV3 verifier)
+# ============================================================
+MODEL_PATH = str(BASE_DIR / "yolo11n.pt")
+YOLO_CONF = 0.30
+IOU_THRESHOLD = 0.45
+
+ANIMAL_CLASSES = [15, 16, 17, 18, 19, 20, 21, 22, 23]  # COCO: cat,dog,horse,sheep,cow,elephant,bear,zebra,giraffe
+
+LEOPARD_IMAGENET_IDS = {288, 289, 290}  # leopard, snow leopard, jaguar
+CLASSIFIER_THRESHOLD = 0.15
+
+SHARPEN_KERNEL = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
+
+CLASSIFY_TRANSFORM = T.Compose([
+    T.ToPILImage(),
+    T.Resize((224, 224)),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+# ── Shared model state ──────────────────────────────────────
+_state_lock = threading.Lock()
+_models = {"yolo": None, "classifier": None, "device": None, "ready": False, "error": None}
 
 
-def launch_preload():
-    """Start test_live_cam.py --preload in background when server boots."""
-    global preload_proc
+def load_models():
+    try:
+        print("[Startup] Loading YOLO11n...")
+        yolo_model = YOLO(MODEL_PATH)
 
-    # Clean stale flag files
-    for f in (READY_FILE, TRIGGER_FILE, STOP_FILE):
-        f.unlink(missing_ok=True)
+        print("[Startup] Loading MobileNetV3-Small classifier...")
+        classifier = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1)
+        classifier.eval()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        classifier.to(device)
 
-    python_exe = sys.executable
-    script     = str(BASE_DIR / "test_live_cam.py")
+        with _state_lock:
+            _models["yolo"] = yolo_model
+            _models["classifier"] = classifier
+            _models["device"] = device
+            _models["ready"] = True
+        print(f"[Startup] Models ready on device={device}.")
+    except Exception as e:
+        with _state_lock:
+            _models["error"] = str(e)
+        print(f"[Startup] ERROR loading models: {e}")
 
-    print("[Server] Launching preload process...")
-    proc = subprocess.Popen(
-        [python_exe, script, "--preload"],
-        cwd=str(BASE_DIR),
-        creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-    )
-    preload_proc = proc
 
-    # Watch for READY_FILE
-    def watch():
-        while True:
-            if READY_FILE.exists():
-                with detection_lock:
-                    detection_status["models_ready"] = True
-                    detection_status["running"]      = False
-                    detection_status["message"]      = "Models ready — click Detect for instant camera!"
-                print("[Server] Models are ready!")
-                break
-            if proc.poll() is not None:
-                print("[Server] Preload process exited unexpectedly.")
-                break
-            time.sleep(0.5)
+threading.Thread(target=load_models, daemon=True).start()
 
-    threading.Thread(target=watch, daemon=True).start()
+
+def sharpen_frame(frame):
+    return cv2.filter2D(frame, -1, SHARPEN_KERNEL)
+
+
+def is_leopard(crop_bgr, classifier, device):
+    if crop_bgr.shape[0] < 20 or crop_bgr.shape[1] < 20:
+        return False, 0.0
+    crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+    tensor = CLASSIFY_TRANSFORM(crop_rgb).unsqueeze(0).to(device)
+    with torch.no_grad():
+        logits = classifier(tensor)
+        probs = torch.softmax(logits, dim=1)[0]
+    leopard_prob = sum(probs[cid].item() for cid in LEOPARD_IMAGENET_IDS)
+    return leopard_prob >= CLASSIFIER_THRESHOLD, leopard_prob
+
+
+def decode_base64_image(data_url: str):
+    """Accepts either a raw base64 string or a data:image/...;base64,xxxx URL."""
+    if "," in data_url:
+        data_url = data_url.split(",", 1)[1]
+    img_bytes = base64.b64decode(data_url)
+    arr = np.frombuffer(img_bytes, dtype=np.uint8)
+    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    return frame
 
 
 @app.route("/")
@@ -77,54 +114,69 @@ def index():
 
 @app.route("/api/status")
 def api_status():
-    # Keep models_ready in sync with READY_FILE
-    ready = READY_FILE.exists()
-    with detection_lock:
-        detection_status["models_ready"] = ready
-        if ready and not detection_status["running"]:
-            detection_status["message"] = "Models ready — click Detect for instant camera!"
-        return jsonify(detection_status.copy())
+    with _state_lock:
+        return jsonify({
+            "models_ready": _models["ready"],
+            "error": _models["error"],
+            "device": str(_models["device"]) if _models["device"] else None,
+        })
 
 
-@app.route("/api/detect/start", methods=["POST"])
-def start_detection():
-    with detection_lock:
-        if detection_status["running"]:
-            return jsonify({"success": False, "message": "Detection is already running."})
-        if not detection_status["models_ready"]:
-            return jsonify({"success": False, "message": "Models still loading, please wait a few seconds..."})
+@app.route("/api/detect_frame", methods=["POST"])
+def detect_frame():
+    with _state_lock:
+        ready = _models["ready"]
+        yolo_model = _models["yolo"]
+        classifier = _models["classifier"]
+        device = _models["device"]
 
-        # Write trigger → preload process opens camera immediately
-        TRIGGER_FILE.write_text("go")
-        detection_status["running"]    = True
-        detection_status["start_time"] = time.time()
-        detection_status["message"]    = "Camera opening..."
+    if not ready:
+        return jsonify({"success": False, "message": "Models still loading, please wait..."}), 503
 
-    # Watch for camera to close (READY_FILE re-appears)
-    def watch_stop():
-        time.sleep(2)   # give camera time to open
-        while True:
-            if READY_FILE.exists():
-                with detection_lock:
-                    detection_status["running"] = False
-                    detection_status["message"] = "Models ready — click Detect for instant camera!"
-                print("[Server] Detection finished, ready for next click.")
-                break
-            time.sleep(0.5)
+    payload = request.get_json(silent=True) or {}
+    image_b64 = payload.get("image")
+    if not image_b64:
+        return jsonify({"success": False, "message": "No image provided."}), 400
 
-    threading.Thread(target=watch_stop, daemon=True).start()
-    return jsonify({"success": True, "message": "Camera opening instantly!"})
+    try:
+        frame = decode_base64_image(image_b64)
+        if frame is None:
+            return jsonify({"success": False, "message": "Could not decode image."}), 400
+    except Exception:
+        return jsonify({"success": False, "message": "Invalid image data."}), 400
 
+    stime = time.time()
+    sharp_frame = sharpen_frame(frame)
 
-@app.route("/api/detect/stop", methods=["POST"])
-def stop_detection():
-    with detection_lock:
-        if not detection_status["running"]:
-            return jsonify({"success": False, "message": "No detection is running."})
-        STOP_FILE.write_text("stop")
-        detection_status["running"] = False
-        detection_status["message"] = "Stopping..."
-    return jsonify({"success": True, "message": "Detection stopped."})
+    results = yolo_model.predict(
+        sharp_frame, conf=YOLO_CONF, iou=IOU_THRESHOLD, verbose=False, classes=ANIMAL_CLASSES
+    )
+
+    best_conf = 0.0
+    best_box = None
+
+    for r in results:
+        for box in r.boxes:
+            xyxy = box.xyxy[0].cpu().numpy()
+            x1, y1 = max(0, int(xyxy[0])), max(0, int(xyxy[1]))
+            x2, y2 = min(frame.shape[1], int(xyxy[2])), min(frame.shape[0], int(xyxy[3]))
+            crop = frame[y1:y2, x1:x2]
+            confirmed, leo_prob = is_leopard(crop, classifier, device)
+            if confirmed and leo_prob > best_conf:
+                best_conf = leo_prob
+                best_box = [x1, y1, x2, y2]
+
+    elapsed_ms = int((time.time() - stime) * 1000)
+
+    return jsonify({
+        "success": True,
+        "leopard": best_box is not None,
+        "confidence": round(best_conf, 3),
+        "box": best_box,
+        "frame_width": frame.shape[1],
+        "frame_height": frame.shape[0],
+        "inference_ms": elapsed_ms,
+    })
 
 
 @app.route("/static/<path:filename>")
@@ -133,13 +185,11 @@ def static_files(filename):
 
 
 if __name__ == "__main__":
-    # Boot: immediately start loading models in background
-    t = threading.Thread(target=launch_preload, daemon=True)
-    t.start()
-
-    print("\n" + "="*55)
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    print("\n" + "=" * 55)
     print("  LEOPARD DETECTION WEBSITE")
-    print("  Open:  http://127.0.0.1:5000")
+    print(f"  Open:  http://127.0.0.1:{port}")
     print("  Models loading in background...")
-    print("="*55 + "\n")
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    print("=" * 55 + "\n")
+    app.run(debug=False, host="0.0.0.0", port=port)

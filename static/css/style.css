@@ -236,6 +236,8 @@ body {
   box-shadow: 0 0 40px rgba(232,160,32,0.2), 0 30px 80px rgba(0,0,0,0.7);
 }
 .hero-leopard-img { width: 100%; max-width: 480px; display: block; border-radius: 14px; }
+#webcam-video { width: 100%; max-width: 480px; display: block; border-radius: 14px; transform: scaleX(-1); }
+#overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; transform: scaleX(-1); }
 
 /* Corner accents */
 .corner {
@@ -262,6 +264,12 @@ body {
   font-size: 0.8rem; font-weight: 800; letter-spacing: 1px;
   border-radius: 6px; padding: 5px 14px;
   animation: fadeIn 0.4s ease;
+  z-index: 3;
+}
+.cam-error {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 20px; color: #ff8080; font-size: 0.85rem; z-index: 3;
+  background: rgba(0,0,0,0.6); border-radius: 14px;
 }
 
 /* Scroll down */

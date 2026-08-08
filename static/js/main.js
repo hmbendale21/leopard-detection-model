@@ -90,10 +90,31 @@ statsObserver.observe(statsSection);
 /* ══════════════════
    DETECTION STATE
 ══════════════════ */
-let timerInterval = null;
-let startTime     = null;
-let isRunning     = false;
-let modelsReady   = false;
+let timerInterval   = null;
+let startTime       = null;
+let isRunning        = false;
+let modelsReady      = false;
+let mediaStream       = null;
+let captureLoopId    = null;
+let inFlight         = false;
+let lastBeepTime     = 0;
+const BEEP_COOLDOWN_MS = 2000;
+const CAPTURE_INTERVAL_MS = 600;   // ~1.6 fps — tuned for CPU inference on a free-tier server
+
+let audioCtx = null;
+function beep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.25);
+  } catch (_) {}
+}
 
 // Disable detect buttons until models are ready
 function setModelsReady(ready) {
@@ -137,7 +158,7 @@ function setDetectionUI(running) {
     if (stopBtn) stopBtn.style.display = 'inline-flex';
     if (badge)      badge.textContent   = 'Detection Active';
     if (statusIcon) statusIcon.textContent = '🟡';
-    if (statusMsg)  statusMsg.textContent  = 'Detection running — camera window is open';
+    if (statusMsg)  statusMsg.textContent  = 'Detection running — scanning your camera feed';
     if (timerDisp)  timerDisp.style.display = 'block';
     if (detLabel)   detLabel.style.display  = 'block';
     startTime = Date.now();
@@ -164,59 +185,136 @@ function showToast(msg, icon = '✅') {
 }
 
 /* ══════════════════
-   API CALLS
+   WEBCAM + LIVE DETECTION (runs entirely via browser camera + server inference)
 ══════════════════ */
 async function startDetection() {
   if (isRunning || !modelsReady) return;
 
-  showToast('Opening camera instantly...', '🐆');
+  const video   = document.getElementById('webcam-video');
+  const canvas  = document.getElementById('overlay-canvas');
+  const heroImg = document.getElementById('hero-leo-img');
 
   try {
-    const res  = await fetch('/api/detect/start', { method: 'POST' });
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'environment' },
+      audio: false
+    });
+  } catch (err) {
+    showToast('Camera access denied or unavailable.', '❌');
+    console.error(err);
+    return;
+  }
+
+  video.srcObject = mediaStream;
+  await video.play();
+
+  video.style.display  = 'block';
+  canvas.style.display = 'block';
+  if (heroImg) heroImg.style.display = 'none';
+
+  canvas.width  = video.videoWidth  || 640;
+  canvas.height = video.videoHeight || 480;
+
+  setDetectionUI(true);
+  showToast('Camera active! Scanning for leopards...', '🐆');
+  runCaptureLoop(video, canvas);
+}
+
+function stopDetection() {
+  if (captureLoopId) { clearTimeout(captureLoopId); captureLoopId = null; }
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(t => t.stop());
+    mediaStream = null;
+  }
+  const video   = document.getElementById('webcam-video');
+  const canvas  = document.getElementById('overlay-canvas');
+  const heroImg = document.getElementById('hero-leo-img');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  video.style.display  = 'none';
+  canvas.style.display = 'none';
+  if (heroImg) heroImg.style.display = 'block';
+
+  setDetectionUI(false);
+  showToast('Detection stopped.', '⏹️');
+}
+
+// Offscreen canvas used purely to grab JPEG bytes from the video element
+const grabCanvas = document.createElement('canvas');
+const grabCtx     = grabCanvas.getContext('2d');
+
+async function captureAndSend(video, overlayCanvas) {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    grabCanvas.width  = video.videoWidth;
+    grabCanvas.height = video.videoHeight;
+    grabCtx.drawImage(video, 0, 0, grabCanvas.width, grabCanvas.height);
+    const dataUrl = grabCanvas.toDataURL('image/jpeg', 0.7);
+
+    const res  = await fetch('/api/detect_frame', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl })
+    });
     const data = await res.json();
 
     if (data.success) {
-      setDetectionUI(true);
-      showToast('Camera opened! Detection running.', '✅');
-      pollStatus();
-    } else {
-      showToast(data.message || 'Failed to start.', '❌');
+      drawDetection(overlayCanvas, data);
     }
   } catch (err) {
-    showToast('Server error — is app.py running?', '❌');
-    console.error(err);
+    // transient network hiccup — keep looping
+  } finally {
+    inFlight = false;
   }
 }
 
-async function stopDetection() {
-  try {
-    const res  = await fetch('/api/detect/stop', { method: 'POST' });
-    const data = await res.json();
-    setDetectionUI(false);
-    showToast(data.message || 'Detection stopped.', '⏹️');
-  } catch (err) {
-    showToast('Could not stop detection.', '❌');
+function drawDetection(overlayCanvas, data) {
+  const ctx = overlayCanvas.getContext('2d');
+  ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  const detLabel = document.getElementById('det-label');
+
+  if (data.leopard && data.box) {
+    const [x1, y1, x2, y2] = data.box;
+    const scaleX = overlayCanvas.width  / data.frame_width;
+    const scaleY = overlayCanvas.height / data.frame_height;
+
+    ctx.strokeStyle = '#00e87a';
+    ctx.lineWidth   = 3;
+    ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
+
+    const label = `LEOPARD ${(data.confidence * 100).toFixed(0)}%`;
+    ctx.font = 'bold 16px Outfit, sans-serif';
+    const textW = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x1 * scaleX - 2, y1 * scaleY - 24, textW + 12, 22);
+    ctx.fillStyle = '#00e87a';
+    // Un-mirror the text so it reads correctly against the mirrored canvas
+    ctx.save();
+    ctx.translate(x1 * scaleX + textW + 8, y1 * scaleY - 8);
+    ctx.scale(-1, 1);
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+
+    if (detLabel) detLabel.style.display = 'block';
+
+    const now = Date.now();
+    if (now - lastBeepTime > BEEP_COOLDOWN_MS) {
+      lastBeepTime = now;
+      beep();
+    }
+  } else {
+    if (detLabel) detLabel.style.display = 'none';
   }
 }
 
-/* Poll the server every 3 s to sync state */
-function pollStatus() {
+function runCaptureLoop(video, overlayCanvas) {
   if (!isRunning) return;
-  setTimeout(async () => {
-    try {
-      const res  = await fetch('/api/status');
-      const data = await res.json();
-      if (!data.running && isRunning) {
-        setDetectionUI(false);
-        showToast('Detection finished or camera closed.', 'ℹ️');
-        return;
-      }
-    } catch (_) {}
-    pollStatus();
-  }, 3000);
+  captureAndSend(video, overlayCanvas);
+  captureLoopId = setTimeout(() => runCaptureLoop(video, overlayCanvas), CAPTURE_INTERVAL_MS);
 }
 
-/* Initial status check on load — also polls until models ready */
+/* Poll until models are ready on the server */
 async function pollModelsReady() {
   try {
     const res  = await fetch('/api/status');
@@ -224,8 +322,12 @@ async function pollModelsReady() {
     if (data.models_ready) {
       setModelsReady(true);
       const el = document.getElementById('status-msg');
-      if (el && !isRunning) el.textContent = 'Models ready — click Detect for instant camera!';
-      if (data.running) { setDetectionUI(true); pollStatus(); }
+      if (el && !isRunning) el.textContent = 'Models ready — click Start Detection!';
+      return;
+    }
+    if (data.error) {
+      const el = document.getElementById('status-msg');
+      if (el) el.textContent = 'Model load error — check server logs.';
       return;
     }
   } catch (_) {}

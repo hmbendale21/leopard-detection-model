@@ -1,7 +1,0 @@
-.git
-__pycache__
-*.pyc
-xml
-.model_ready
-.detect_trigger
-.detect_stop
