@@ -316,27 +316,65 @@ function runCaptureLoop(video, overlayCanvas) {
 
 /* Poll until models are ready on the server */
 async function pollModelsReady() {
+
   try {
-    const res  = await fetch('/api/status');
-    const data = await res.json();
-    if (data.models_ready) {
-      setModelsReady(true);
-      const el = document.getElementById('status-msg');
-      if (el && !isRunning) el.textContent = 'Models ready — click Start Detection!';
-      return;
-    }
-    if (data.error) {
-      const el = document.getElementById('status-msg');
-      if (el) el.textContent = 'Model load error — check server logs.';
-      return;
-    }
-  } catch (_) {}
-  setTimeout(pollModelsReady, 1000);
+
+      const res = await fetch("/api/status");
+
+      const data = await res.json();
+
+      console.log(data);
+
+      if (data.models_ready) {
+
+          setModelsReady(true);
+
+          const el = document.getElementById("status-msg");
+
+          if (el) {
+
+              el.textContent = "AI Models Ready";
+
+          }
+
+          return;
+
+      }
+
+      if (data.error) {
+
+          console.error(data.error);
+
+          const el = document.getElementById("status-msg");
+
+          if (el) {
+
+              el.textContent = data.error;
+
+          }
+
+          return;
+
+      }
+
+  }
+
+  catch(err){
+
+      console.error(err);
+
+  }
+
+  setTimeout(pollModelsReady,3000);
+
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  setModelsReady(false); // start disabled
+window.addEventListener("DOMContentLoaded", () => {
+
+  setModelsReady(false);
+
   pollModelsReady();
+
 });
 
 /* ══════════════════

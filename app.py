@@ -56,14 +56,26 @@ _models = {"yolo": None, "classifier": None, "device": None, "ready": False, "er
 
 
 def load_models():
-    try:
-        print("[Startup] Loading YOLO11n...")
-        yolo_model = YOLO(MODEL_PATH)
+    global _models
 
-        print("[Startup] Loading MobileNetV3-Small classifier...")
-        classifier = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.IMAGENET1K_V1)
+    try:
+        print("========== LOADING MODELS ==========")
+
+        # Automatically download YOLO if missing
+        yolo_model = YOLO("yolo11n.pt")
+
+        print("YOLO Loaded")
+
+        classifier = models.mobilenet_v3_small(
+            weights=models.MobileNet_V3_Small_Weights.DEFAULT
+        )
+
         classifier.eval()
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
+
         classifier.to(device)
 
         with _state_lock:
@@ -71,11 +83,18 @@ def load_models():
             _models["classifier"] = classifier
             _models["device"] = device
             _models["ready"] = True
-        print(f"[Startup] Models ready on device={device}.")
+            _models["error"] = None
+
+        print("MODELS READY")
+
     except Exception as e:
+
+        print("MODEL LOAD FAILED")
+        print(e)
+
         with _state_lock:
-            _models["error"] = str(e)
-        print(f"[Startup] ERROR loading models: {e}")
+            _models["ready"] = False
+            _models["error"] = str(e)   
 
 
 threading.Thread(target=load_models, daemon=True).start()
@@ -114,12 +133,19 @@ def index():
 
 @app.route("/api/status")
 def api_status():
+
     with _state_lock:
+
         return jsonify({
+
             "models_ready": _models["ready"],
+
             "error": _models["error"],
-            "device": str(_models["device"]) if _models["device"] else None,
-        })
+
+            "device": str(_models["device"])
+            if _models["device"] else None
+
+        }),200
 
 
 @app.route("/api/detect_frame", methods=["POST"])
