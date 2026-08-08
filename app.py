@@ -53,7 +53,7 @@ CLASSIFY_TRANSFORM = T.Compose([
 
 # ── Shared model state ──────────────────────────────────────
 _state_lock = threading.Lock()
-_models = {"yolo": None, "classifier": None, "device": None, "ready": False, "error": None}
+_models = {"yolo": None, "classifier": None, "device": None, "ready": False, "error": None, "loading_step": None}
 
 
 def load_models():
@@ -61,12 +61,19 @@ def load_models():
 
     try:
         print("========== LOADING MODELS ==========")
+        with _state_lock:
+            _models["loading_step"] = "starting"
 
         # Automatically download YOLO if missing
-        # Use explicit path so deployers don't rely on CWD
-        if not pathlib.Path(MODEL_PATH).exists():
-            raise FileNotFoundError(f"YOLO model file not found at {MODEL_PATH}")
-        yolo_model = YOLO(MODEL_PATH)
+        # Use explicit path when available; otherwise let ultralytics try
+        # to download the named model into its cache (may fail in locked envs).
+        with _state_lock:
+            _models["loading_step"] = "loading_yolo"
+        if pathlib.Path(MODEL_PATH).exists():
+            yolo_model = YOLO(MODEL_PATH)
+        else:
+            print(f"YOLO model not found at {MODEL_PATH}; attempting ultralytics download of 'yolo11n.pt'")
+            yolo_model = YOLO("yolo11n.pt")
 
         print("YOLO Loaded")
 
@@ -75,14 +82,36 @@ def load_models():
         # uninitialized model and log a warning. For production, bundle
         # the weights or provide a local checkpoint to avoid runtime
         # downloads.
+        with _state_lock:
+            _models["loading_step"] = "loading_classifier"
+        # Try to load pretrained weights from torchvision. If that fails
+        # (network blocked), attempt to load a local checkpoint at
+        # `mobilenet_weights.pth` inside the project. If that also fails,
+        # fall back to an uninitialized model so the server can still run.
         try:
             classifier = models.mobilenet_v3_small(
                 weights=models.MobileNet_V3_Small_Weights.DEFAULT
             )
         except Exception as ex_weights:
-            print("Could not load pretrained MobileNet weights; falling back to weights=None")
+            print("Could not load pretrained MobileNet weights from torchvision.")
             print(ex_weights)
-            classifier = models.mobilenet_v3_small(weights=None)
+            local_ckpt = BASE_DIR / "mobilenet_weights.pth"
+            if local_ckpt.exists():
+                try:
+                    print(f"Loading MobileNet weights from local checkpoint: {local_ckpt}")
+                    classifier = models.mobilenet_v3_small(weights=None)
+                    state = torch.load(local_ckpt, map_location="cpu")
+                    # If checkpoint contains a 'state_dict' key, use it
+                    if isinstance(state, dict) and "state_dict" in state and not any(k.startswith("features") for k in state.keys()):
+                        state = state["state_dict"]
+                    classifier.load_state_dict(state)
+                except Exception as ex_local:
+                    print("Failed to load local MobileNet checkpoint; using uninitialized model")
+                    print(ex_local)
+                    classifier = models.mobilenet_v3_small(weights=None)
+            else:
+                print("No local MobileNet checkpoint found; using uninitialized model")
+                classifier = models.mobilenet_v3_small(weights=None)
 
         classifier.eval()
 
@@ -98,6 +127,7 @@ def load_models():
             _models["device"] = device
             _models["ready"] = True
             _models["error"] = None
+            _models["loading_step"] = "ready"
 
         print("MODELS READY")
 
@@ -108,10 +138,33 @@ def load_models():
 
         with _state_lock:
             _models["ready"] = False
-            _models["error"] = str(e)   
+            _models["error"] = str(e)
+            # leave loading_step as-is or set to failed
+            _models["loading_step"] = "failed"
 
 
 threading.Thread(target=load_models, daemon=True).start()
+
+# Watchdog: if models haven't finished loading within TIMEOUT seconds,
+# set an explicit error so `/api/status` surfaces it instead of showing
+# a silent "models_ready: false" with null error.
+def _load_watchdog(timeout=180):
+    start = time.time()
+    while time.time() - start < timeout:
+        with _state_lock:
+            if _models.get("ready"):
+                return
+            if _models.get("error"):
+                return
+        time.sleep(1)
+    # Timeout reached
+    with _state_lock:
+        if not _models.get("ready") and not _models.get("error"):
+            _models["error"] = f"Model loading timed out after {timeout} seconds. Check logs for details."
+            _models["loading_step"] = "timeout"
+            print(_models["error"])
+
+threading.Thread(target=_load_watchdog, daemon=True).start()
 
 
 def sharpen_frame(frame):
@@ -156,8 +209,10 @@ def api_status():
 
             "error": _models["error"],
 
-            "device": str(_models["device"])
-            if _models["device"] else None
+            "device": str(_models["device"]) 
+            if _models["device"] else None,
+
+            "loading_step": _models.get("loading_step")
 
         }),200
 
