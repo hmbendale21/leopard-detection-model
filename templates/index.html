@@ -101,7 +101,23 @@
           <div class="corner bl"></div>
           <div class="corner br"></div>
           <div class="scan-beam" id="scan-beam"></div>
-          <img src="/static/images/t1.jpg" alt="Leopard" class="hero-leopard-img" id="hero-leo-img" />
+
+          <!-- Idle preview image -->
+          <img src="/static/images/t1.jpg"
+               alt="Leopard"
+               class="hero-leopard-img"
+               id="hero-leo-img" />
+
+          <!-- Live webcam -->
+          <video id="webcam-video"
+                 autoplay
+                 playsinline
+                 muted
+                 style="display:none;"></video>
+
+          <canvas id="overlay-canvas"
+                  style="display:none;"></canvas>
+
           <div class="detection-label" id="det-label" style="display:none;">
             LEOPARD DETECTED ✓
           </div>
