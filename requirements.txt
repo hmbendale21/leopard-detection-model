@@ -1,14 +1,8 @@
-flask==3.0.3
-flask-cors==4.0.1
-gunicorn==22.0.0
-pillow==10.4.0
-numpy==1.26.4
-opencv-python-headless==4.10.0.84
-ultralytics==8.2.103
-
-# CPU-only PyTorch wheels — much smaller than the CUDA build and all
-# that's needed for a web-hosted CPU instance. Remove --extra-index-url
-# and pin a CUDA build instead if you're deploying to a GPU box.
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.4.1
-torchvision==0.19.1
+flask
+flask-cors
+pillow
+torch
+torchvision
+ultralytics
+opencv-python-headless
+numpy
